@@ -10,10 +10,12 @@ namespace CodeShield.Controllers
     public class ScanController : Controller
     {
         private readonly IGitHubService _gitHubService;
+        private readonly IOsvService _osvService;
 
-        public ScanController(IGitHubService gitHubService)
+        public ScanController(IGitHubService gitHubService, IOsvService osvService)
         {
             _gitHubService = gitHubService;
+            _osvService = osvService;
         }
 
         [HttpGet]
@@ -47,6 +49,15 @@ namespace CodeShield.Controllers
                 model.Files = files;
                 model.Packages = packages;
                 model.DetectedEcosystems = detectedEcosystems;
+
+                if (packages != null && packages.Count > 0)
+                {
+                    var (osvSuccess, osvErrorMessage) = await _osvService.CheckVulnerabilitiesAsync(packages);
+                    if (!osvSuccess || osvErrorMessage != null)
+                    {
+                        model.OsvWarningMessage = osvErrorMessage ?? "Some packages could not be checked due to a temporary issue — try rescanning for complete results.";
+                    }
+                }
             }
 
             return View(model);

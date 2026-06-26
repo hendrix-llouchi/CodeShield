@@ -162,7 +162,7 @@ namespace CodeShield.Services
                             var base64Content = contentProp.GetString() ?? string.Empty;
                             base64Content = base64Content.Replace("\n", "").Replace("\r", "").Trim();
                             var fileBytes = Convert.FromBase64String(base64Content);
-                            var fileContent = Encoding.UTF8.GetString(fileBytes);
+                            var fileContent = Encoding.UTF8.GetString(fileBytes).TrimStart('\uFEFF');
 
                             string fileName = System.IO.Path.GetFileName(path).ToLowerInvariant();
                             if (fileName == "package.json")
@@ -240,12 +240,12 @@ namespace CodeShield.Services
             try
             {
                 var doc = XDocument.Parse(content);
-                var packageReferences = doc.Descendants().Where(x => x.Name.LocalName == "PackageReference");
+                var packageReferences = doc.Descendants().Where(x => x.Name.LocalName.Equals("PackageReference", StringComparison.OrdinalIgnoreCase));
 
                 foreach (var pr in packageReferences)
                 {
-                    var includeAttr = pr.Attribute("Include") ?? pr.Attribute("include");
-                    var versionAttr = pr.Attribute("Version") ?? pr.Attribute("version");
+                    var includeAttr = pr.Attributes().FirstOrDefault(x => x.Name.LocalName.Equals("Include", StringComparison.OrdinalIgnoreCase) || x.Name.LocalName.Equals("Update", StringComparison.OrdinalIgnoreCase));
+                    var versionAttr = pr.Attributes().FirstOrDefault(x => x.Name.LocalName.Equals("Version", StringComparison.OrdinalIgnoreCase));
 
                     if (includeAttr != null)
                     {
@@ -254,7 +254,7 @@ namespace CodeShield.Services
 
                         if (string.IsNullOrEmpty(version))
                         {
-                            var versionEl = pr.Elements().FirstOrDefault(x => x.Name.LocalName == "Version" || x.Name.LocalName == "version");
+                            var versionEl = pr.Elements().FirstOrDefault(x => x.Name.LocalName.Equals("Version", StringComparison.OrdinalIgnoreCase));
                             if (versionEl != null)
                             {
                                 version = versionEl.Value;
