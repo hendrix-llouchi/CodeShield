@@ -36,7 +36,7 @@ namespace CodeShield.Controllers
                 return View(model);
             }
 
-            var (files, errorMessage) = await _gitHubService.GetRepositoryFilesAsync(model.RepositoryUrl);
+            var (files, packages, detectedEcosystems, errorMessage) = await _gitHubService.GetRepositoryFilesAsync(model.RepositoryUrl);
 
             if (errorMessage != null)
             {
@@ -45,6 +45,8 @@ namespace CodeShield.Controllers
             else
             {
                 model.Files = files;
+                model.Packages = packages;
+                model.DetectedEcosystems = detectedEcosystems;
             }
 
             return View(model);
