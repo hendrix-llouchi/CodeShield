@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient<IGitHubService, GitHubService>();
+builder.Services.AddHttpClient<IOsvService, OsvService>();
 
 
 // Register ApplicationDbContext
