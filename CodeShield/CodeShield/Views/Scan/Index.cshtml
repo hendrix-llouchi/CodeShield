@@ -42,37 +42,92 @@
                 </div>
             </div>
 
-            @if (Model.IsSubmitted && string.IsNullOrEmpty(Model.ErrorMessage) && Model.Files != null)
+            @if (Model.IsSubmitted && string.IsNullOrEmpty(Model.ErrorMessage))
             {
-                <div class="card shadow border-0 rounded-3">
-                    <div class="card-header bg-success text-white py-3">
-                        <h5 class="card-title mb-0 d-flex justify-content-between align-items-center">
-                            <span>Repository Files Found</span>
-                            <span class="badge bg-white text-success">@Model.Files.Count files</span>
-                        </h5>
-                    </div>
-                    <div class="card-body p-0">
-                        <div style="max-height: 400px; overflow-y: auto;">
-                            @if (Model.Files.Count == 0)
-                            {
-                                <div class="p-4 text-center text-muted">
-                                    No files found in this repository.
-                                </div>
-                            }
-                            else
-                            {
-                                <ul class="list-group list-group-flush">
-                                    @foreach (var file in Model.Files)
-                                    {
-                                        <li class="list-group-item font-monospace small">
-                                            📄 @file
-                                        </li>
-                                    }
-                                </ul>
-                            }
+                @if (Model.DetectedEcosystems != null && Model.DetectedEcosystems.Contains(CodeShield.Models.Ecosystem.Python) && !Model.DetectedEcosystems.Contains(CodeShield.Models.Ecosystem.Npm) && !Model.DetectedEcosystems.Contains(CodeShield.Models.Ecosystem.NuGet))
+                {
+                    <div class="alert alert-warning border-0 shadow-sm p-4 mb-4 rounded-3 d-flex align-items-start" id="python-warning-banner">
+                        <span class="fs-3 me-3">⚠️</span>
+                        <div>
+                            <h5 class="alert-heading fw-bold mb-1">Python Package Scan Limitation</h5>
+                            <p class="mb-0 text-dark">Package vulnerability scanning is disabled for Python repositories. Code pattern scanning is still active for Python files, but no third-party package checks will be performed.</p>
                         </div>
                     </div>
-                </div>
+                }
+
+                @if (Model.DetectedEcosystems != null && Model.DetectedEcosystems.Count > 0)
+                {
+                    @foreach (var ecosystem in Model.DetectedEcosystems)
+                    {
+                        var ecosystemName = ecosystem == CodeShield.Models.Ecosystem.Npm ? "npm" :
+                                            ecosystem == CodeShield.Models.Ecosystem.NuGet ? "NuGet" : "Python";
+                        var badgeColor = ecosystem == CodeShield.Models.Ecosystem.Npm ? "bg-warning text-dark" :
+                                         ecosystem == CodeShield.Models.Ecosystem.NuGet ? "bg-primary" : "bg-info text-dark";
+                        var ecosystemPackages = Model.Packages?.Where(p => p.Ecosystem == ecosystem).ToList() ?? new List<CodeShield.Models.DependencyPackage>();
+
+                        <div class="card shadow border-0 rounded-3 mb-4">
+                            <div class="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0 fw-bold">
+                                    📦 @ecosystemName Packages
+                                </h5>
+                                <span class="badge @badgeColor">@ecosystemPackages.Count packages</span>
+                            </div>
+                            <div class="card-body p-0">
+                                @if (ecosystemPackages.Count == 0)
+                                {
+                                    <div class="p-4 text-center text-muted">
+                                        @ecosystemName Packages — 0 packages found in this repository
+                                    </div>
+                                }
+                                else
+                                {
+                                    <ul class="list-group list-group-flush">
+                                        @foreach (var pkg in ecosystemPackages)
+                                        {
+                                            <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-4">
+                                                <span class="fw-semibold text-secondary">@pkg.PackageName</span>
+                                                <span class="badge bg-light text-dark border font-monospace px-3 py-2">@pkg.Version</span>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+
+                @if (Model.Files != null)
+                {
+                    <div class="card shadow border-0 rounded-3 mb-4">
+                        <div class="card-header bg-success text-white py-3">
+                            <h5 class="card-title mb-0 d-flex justify-content-between align-items-center">
+                                <span>Repository Files Found</span>
+                                <span class="badge bg-white text-success">@Model.Files.Count files</span>
+                            </h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div style="max-height: 250px; overflow-y: auto;">
+                                @if (Model.Files.Count == 0)
+                                {
+                                    <div class="p-4 text-center text-muted">
+                                        No files found in this repository.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <ul class="list-group list-group-flush">
+                                        @foreach (var file in Model.Files)
+                                        {
+                                            <li class="list-group-item font-monospace small">
+                                                📄 @file
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
             }
         </div>
     </div>
