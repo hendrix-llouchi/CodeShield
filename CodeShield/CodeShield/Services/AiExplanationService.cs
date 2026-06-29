@@ -22,6 +22,31 @@ namespace CodeShield.Services
             _httpClient.Timeout = TimeSpan.FromSeconds(25);
         }
 
+        private static readonly System.Threading.SemaphoreSlim _rateLimitSemaphore = new System.Threading.SemaphoreSlim(1, 1);
+        private static DateTime _lastRequestStartTime = DateTime.MinValue;
+        private static readonly TimeSpan _minInterval = TimeSpan.FromMilliseconds(3350);
+
+        private async Task AcquireRateLimitSlotAsync()
+        {
+            await _rateLimitSemaphore.WaitAsync();
+            try
+            {
+                var now = DateTime.UtcNow;
+                var timeSinceLast = now - _lastRequestStartTime;
+                if (timeSinceLast < _minInterval)
+                {
+                    var delay = _minInterval - timeSinceLast;
+                    _logger.LogInformation("[AI RATE LIMIT] Pacing request. Delaying for {DelayMs:F0} ms to respect 18 req/min limit.", delay.TotalMilliseconds);
+                    await Task.Delay(delay);
+                }
+                _lastRequestStartTime = DateTime.UtcNow;
+            }
+            finally
+            {
+                _rateLimitSemaphore.Release();
+            }
+        }
+
         public async Task<(string? Explanation, string? Fix)> ExplainVulnerabilityAsync(
             string packageName, string version, string vulnId, string description)
         {
@@ -48,7 +73,7 @@ namespace CodeShield.Services
                               $"{{\n" +
                               $"  \"explanation\": \"This package has a vulnerability that allows...\",\n" +
                               $"  \"fix\": \"Upgrade to version 1.2.3 or higher.\"\n" +
-                              $"}}";
+                              $"\n}}";
 
             var payloadObj = new
             {
@@ -63,11 +88,13 @@ namespace CodeShield.Services
 
             string requestJson = JsonSerializer.Serialize(payloadObj);
 
-            int maxAttempts = 5;
+            int maxAttempts = 3;
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 try
                 {
+                    await AcquireRateLimitSlotAsync();
+
                     using var request = new HttpRequestMessage(HttpMethod.Post, requestUri);
                     request.Headers.Add("x-api-key", apiKey);
                     request.Headers.Add("anthropic-version", "2023-06-01");
@@ -86,7 +113,7 @@ namespace CodeShield.Services
 
                         if (isTransient && attempt < maxAttempts)
                         {
-                            double delay = Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2);
+                            double delay = Math.Min(8.0, Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2));
                             _logger.LogWarning(
                                 "[AI RETRY] Package={Package} VulnId={VulnId} | Transient HTTP {StatusCode} on attempt {Attempt}/{MaxAttempts}. Retrying in {Delay:F2}s...",
                                 packageName, vulnId, statusCode, attempt, maxAttempts, delay);
@@ -124,7 +151,7 @@ namespace CodeShield.Services
                 }
                 catch (TaskCanceledException) when (attempt < maxAttempts)
                 {
-                    double delay = Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2);
+                    double delay = Math.Min(8.0, Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2));
                     _logger.LogWarning(
                         "[AI RETRY] Package={Package} VulnId={VulnId} | Timeout (TaskCanceledException) on attempt {Attempt}/{MaxAttempts}. Retrying in {Delay:F2}s...",
                         packageName, vulnId, attempt, maxAttempts, delay);
@@ -141,7 +168,7 @@ namespace CodeShield.Services
                 }
                 catch (Exception ex) when (IsTransientException(ex) && attempt < maxAttempts)
                 {
-                    double delay = Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2);
+                    double delay = Math.Min(8.0, Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2));
                     string exTypeName = ex.GetType().Name;
                     _logger.LogWarning(
                         "[AI RETRY] Package={Package} VulnId={VulnId} | Transient Exception {ExType} ({ExMessage}) on attempt {Attempt}/{MaxAttempts}. Retrying in {Delay:F2}s...",
@@ -154,6 +181,147 @@ namespace CodeShield.Services
                         "[AI FAILURE] Package={Package} Version={Version} VulnId={VulnId} | Exception type={ExType} | Message: {Message}",
                         packageName, version, vulnId, ex.GetType().Name, ex.Message);
                     Console.WriteLine($"[AgentRouter FAIL] {packageName}@{version} ({vulnId}) | {ex.GetType().Name}: {ex.Message}");
+                    return (null, null);
+                }
+            }
+
+            return (null, null);
+        }
+
+        public async Task<(string? Explanation, string? Fix)> ExplainCodeIssueAsync(
+            string fileName, int lineNumber, string issueType, string codeSnippet)
+        {
+            string? apiKey = _configuration["AgentRouter:ApiKey"];
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                _logger.LogWarning("AgentRouter API Key is missing. Please set 'AgentRouter:ApiKey' in your configuration (e.g., .NET User Secrets).");
+                return (null, null);
+            }
+
+            var requestUri = "https://agentrouter.org/v1/messages";
+
+            // Build user prompt
+            var userContent = $"Explain the following code security issue:\n" +
+                              $"File: {fileName}\n" +
+                              $"Line: {lineNumber}\n" +
+                              $"Issue Type: {issueType}\n" +
+                              $"Code Snippet: {codeSnippet}\n\n" +
+                              $"Please provide:\n" +
+                              $"1. A plain-English explanation of the security risk (2-3 sentences, no jargon, written for a developer without a security background).\n" +
+                              $"2. A specific suggested code fix or pattern to remediate this issue.\n\n" +
+                              $"You MUST respond ONLY with a raw JSON object containing exactly the keys 'explanation' and 'fix'. Do not include any markdown formatting, backticks, or wrapping text.\n" +
+                              $"Example response:\n" +
+                              $"{{\n" +
+                              $"  \"explanation\": \"This code contains a hardcoded password...\",\n" +
+                              $"  \"fix\": \"Use environment variables or a configuration provider to load the password...\"\n" +
+                              $"}}";
+
+            var payloadObj = new
+            {
+                model = "claude-opus-4-6",
+                max_tokens = 1024,
+                system = "You are a security assistant. You must respond ONLY with a raw JSON object containing the keys 'explanation' and 'fix'. Do not include markdown formatting, backticks, or any other wrapper.",
+                messages = new[]
+                {
+                    new { role = "user", content = userContent }
+                }
+            };
+
+            string requestJson = JsonSerializer.Serialize(payloadObj);
+
+            int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    await AcquireRateLimitSlotAsync();
+
+                    using var request = new HttpRequestMessage(HttpMethod.Post, requestUri);
+                    request.Headers.Add("x-api-key", apiKey);
+                    request.Headers.Add("anthropic-version", "2023-06-01");
+                    request.Headers.TryAddWithoutValidation("User-Agent", "claude-code/2.1.131 (cli)");
+                    request.Headers.TryAddWithoutValidation("Originator", "codex_cli_rs");
+                    request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+                    using var response = await _httpClient.SendAsync(request);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string rawResponse = await response.Content.ReadAsStringAsync();
+                        int statusCode = (int)response.StatusCode;
+
+                        bool isTransient = statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504;
+
+                        if (isTransient && attempt < maxAttempts)
+                        {
+                            double delay = Math.Min(8.0, Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2));
+                            _logger.LogWarning(
+                                "[AI RETRY] File={File} Line={Line} IssueType={IssueType} | Transient HTTP {StatusCode} on attempt {Attempt}/{MaxAttempts}. Retrying in {Delay:F2}s...",
+                                fileName, lineNumber, issueType, statusCode, attempt, maxAttempts, delay);
+                            await Task.Delay(TimeSpan.FromSeconds(delay));
+                            continue;
+                        }
+
+                        _logger.LogError(
+                            "[AI FAILURE] File={File} Line={Line} IssueType={IssueType} | HTTP {StatusCode} | Body: {Body}",
+                            fileName, lineNumber, issueType, statusCode, rawResponse);
+                        Console.WriteLine($"[AgentRouter FAIL] {fileName}:{lineNumber} ({issueType}) | Status: {statusCode} | Body: {rawResponse}");
+                        return (null, null);
+                    }
+
+                    string responseJson = await response.Content.ReadAsStringAsync();
+
+                    using var doc = JsonDocument.Parse(responseJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("content", out var contentArray) &&
+                        contentArray.ValueKind == JsonValueKind.Array &&
+                        contentArray.GetArrayLength() > 0)
+                    {
+                        var firstContent = contentArray[0];
+                        if (firstContent.TryGetProperty("text", out var textProp))
+                        {
+                            string text = textProp.GetString() ?? "";
+                            return ParseJsonResponse(text, fileName, $"{issueType} @ line {lineNumber}");
+                        }
+                    }
+
+                    _logger.LogWarning(
+                        "[AI FAILURE] File={File} Line={Line} IssueType={IssueType} | Unexpected response format. Response: {Response}",
+                        fileName, lineNumber, issueType, responseJson);
+                    return (null, null);
+                }
+                catch (TaskCanceledException) when (attempt < maxAttempts)
+                {
+                    double delay = Math.Min(8.0, Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2));
+                    _logger.LogWarning(
+                        "[AI RETRY] File={File} Line={Line} IssueType={IssueType} | Timeout (TaskCanceledException) on attempt {Attempt}/{MaxAttempts}. Retrying in {Delay:F2}s...",
+                        fileName, lineNumber, issueType, attempt, maxAttempts, delay);
+                    await Task.Delay(TimeSpan.FromSeconds(delay));
+                }
+                catch (TaskCanceledException tcEx)
+                {
+                    string reason = tcEx.CancellationToken.IsCancellationRequested ? "cancelled" : "timed out";
+                    _logger.LogError(
+                        "[AI FAILURE] File={File} Line={Line} IssueType={IssueType} | Request {Reason} (TaskCanceledException). Message: {Message}",
+                        fileName, lineNumber, issueType, reason, tcEx.Message);
+                    Console.WriteLine($"[AgentRouter FAIL] {fileName}:{lineNumber} ({issueType}) | Request {reason} | {tcEx.Message}");
+                    return (null, null);
+                }
+                catch (Exception ex) when (IsTransientException(ex) && attempt < maxAttempts)
+                {
+                    double delay = Math.Min(8.0, Math.Pow(2, attempt) * (0.9 + Random.Shared.NextDouble() * 0.2));
+                    string exTypeName = ex.GetType().Name;
+                    _logger.LogWarning(
+                        "[AI RETRY] File={File} Line={Line} IssueType={IssueType} | Transient Exception {ExType} ({ExMessage}) on attempt {Attempt}/{MaxAttempts}. Retrying in {Delay:F2}s...",
+                        fileName, lineNumber, issueType, exTypeName, ex.Message, attempt, maxAttempts, delay);
+                    await Task.Delay(TimeSpan.FromSeconds(delay));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        "[AI FAILURE] File={File} Line={Line} IssueType={IssueType} | Exception type={ExType} | Message: {Message}",
+                        fileName, lineNumber, issueType, ex.GetType().Name, ex.Message);
+                    Console.WriteLine($"[AgentRouter FAIL] {fileName}:{lineNumber} ({issueType}) | {ex.GetType().Name}: {ex.Message}");
                     return (null, null);
                 }
             }
@@ -174,7 +342,7 @@ namespace CodeShield.Services
             return false;
         }
 
-        private (string? Explanation, string? Fix) ParseJsonResponse(string rawResponse, string packageName, string vulnId)
+        private (string? Explanation, string? Fix) ParseJsonResponse(string rawResponse, string contextName, string contextId)
         {
             if (string.IsNullOrWhiteSpace(rawResponse))
                 return (null, null);
@@ -218,9 +386,9 @@ namespace CodeShield.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(
-                    "[AI FAILURE] Package={Package} VulnId={VulnId} | Failed to parse JSON from AI response. Exception: {ExMessage} | RawContent: {RawContent}",
-                    packageName, vulnId, ex.Message, rawResponse);
-                Console.WriteLine($"[AgentRouter FAIL] {packageName} ({vulnId}) | JSON parse error: {ex.Message} | Raw: {rawResponse}");
+                    "[AI FAILURE] ContextName={ContextName} ContextId={ContextId} | Failed to parse JSON from AI response. Exception: {ExMessage} | RawContent: {RawContent}",
+                    contextName, contextId, ex.Message, rawResponse);
+                Console.WriteLine($"[AgentRouter FAIL] {contextName} ({contextId}) | JSON parse error: {ex.Message} | Raw: {rawResponse}");
                 return (null, null);
             }
         }
