@@ -10,6 +10,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient<IGitHubService, GitHubService>();
 builder.Services.AddHttpClient<IOsvService, OsvService>();
 builder.Services.AddHttpClient<IAiExplanationService, AiExplanationService>();
+builder.Services.AddTransient<ICodePatternScanner, CodePatternScanner>();
 
 
 // Register ApplicationDbContext
