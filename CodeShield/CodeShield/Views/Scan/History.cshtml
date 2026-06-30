@@ -1,0 +1,142 @@
+@model IEnumerable<CodeShield.Models.ScanResult>
+@{
+    ViewData["Title"] = "My Scans";
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 fw-bold text-dark mb-1">My Scans</h1>
+            <p class="text-muted small mb-0">View your repository scan history and security trends.</p>
+        </div>
+        <div>
+            <a asp-controller="Scan" asp-action="Index" class="cs-btn cs-btn-primary text-white text-decoration-none d-flex align-items-center gap-2">
+                <span>🔍</span> New Scan
+            </a>
+        </div>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="cs-card p-5 text-center my-5 shadow-sm">
+            <span class="fs-1 d-block mb-3">🛡️</span>
+            <h4 class="fw-bold text-dark">No Scan History Yet</h4>
+            <p class="text-muted small max-width-md mx-auto mb-4">
+                You haven't scanned any GitHub repositories yet. Enter a repository URL to check for security vulnerabilities and code pattern issues.
+            </p>
+            <div class="d-flex justify-content-center">
+                <a asp-controller="Scan" asp-action="Index" class="cs-btn cs-btn-primary text-white text-decoration-none">
+                    Start Your First Scan
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="cs-card p-4 shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr class="text-muted small text-uppercase" style="font-size: 0.8rem;">
+                            <th class="border-0 px-3 py-2">Repository</th>
+                            <th class="border-0 px-3 py-2">Scan Date</th>
+                            <th class="border-0 px-3 py-2">Security Grade</th>
+                            <th class="border-0 px-3 py-2">Issues Found</th>
+                            <th class="border-0 px-3 py-2">Ecosystems</th>
+                            <th class="border-0 px-3 py-2 text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var scan in Model)
+                        {
+                            var gradeColorClass = scan.SecurityGrade switch
+                            {
+                                "A" => "bg-success text-white",
+                                "B" => "bg-success text-white",
+                                "C" => "bg-warning text-dark",
+                                "D" => "bg-danger text-white",
+                                "F" => "bg-danger text-white",
+                                _ => "bg-secondary text-white"
+                            };
+
+                            <tr>
+                                <td class="px-3 py-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fs-5">📦</span>
+                                        <div>
+                                            <a asp-controller="Scan" asp-action="Details" asp-route-id="@scan.Id" class="fw-bold text-dark text-decoration-none hover-primary">
+                                                @scan.RepositoryName
+                                            </a>
+                                            <div class="text-muted small" style="font-size: 0.75rem;">
+                                                <a href="@scan.RepositoryUrl" target="_blank" class="text-decoration-none text-muted">@scan.RepositoryUrl</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 text-secondary small">
+                                    @scan.ScannedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt")
+                                </td>
+                                <td class="px-3 py-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge @gradeColorClass rounded-pill px-3 py-2 font-monospace fw-bold" style="font-size: 0.9rem;">Grade @scan.SecurityGrade</span>
+                                        @if (scan.Status == CodeShield.Models.ScanStatus.PartialFailure)
+                                        {
+                                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill" style="font-size: 0.7rem;">Partial Warning</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3">
+                                    @if (scan.TotalIssuesFound == 0)
+                                    {
+                                        <span class="text-success small fw-semibold">✅ No issues found</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger small fw-semibold">⚠️ @scan.TotalIssuesFound issues</span>
+                                    }
+                                </td>
+                                <td class="px-3 py-3 text-secondary small">
+                                    @if (!string.IsNullOrEmpty(scan.EcosystemsDetected))
+                                    {
+                                        var ecosystems = scan.EcosystemsDetected.Split(", ");
+                                        foreach (var eco in ecosystems)
+                                        {
+                                            var badgeClass = eco switch
+                                            {
+                                                "Npm" => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+                                                "NuGet" => "bg-primary-subtle text-primary-emphasis border border-primary-subtle",
+                                                _ => "bg-info-subtle text-info-emphasis border border-info-subtle"
+                                            };
+                                            <span class="badge @badgeClass rounded-pill me-1" style="font-size: 0.7rem;">@eco</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted" style="font-size: 0.75rem;">None</span>
+                                    }
+                                </td>
+                                <td class="px-3 py-3 text-end">
+                                    <div class="d-flex justify-content-end align-items-center gap-2">
+                                        <a asp-controller="Scan" asp-action="Details" asp-route-id="@scan.Id" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+                                            View
+                                        </a>
+                                        <a asp-controller="Scan" asp-action="Index" asp-route-repositoryUrl="@scan.RepositoryUrl" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                                            Rescan
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .hover-primary:hover {
+        color: var(--primary-color) !important;
+        text-decoration: underline !important;
+    }
+</style>
