@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using CodeShield.Models;
 using CodeShield.Services;
+using CodeShield.Data;
 
 namespace CodeShield.Controllers
 {
@@ -18,19 +21,25 @@ namespace CodeShield.Controllers
         private readonly IAiExplanationService _aiExplanationService;
         private readonly ICodePatternScanner _codePatternScanner;
         private readonly IConfiguration _configuration;
+        private readonly ApplicationDbContext _context;
+        private readonly UserManager<IdentityUser> _userManager;
 
         public ScanController(
             IGitHubService gitHubService, 
             IOsvService osvService, 
             IAiExplanationService aiExplanationService,
             ICodePatternScanner codePatternScanner,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            ApplicationDbContext context,
+            UserManager<IdentityUser> userManager)
         {
             _gitHubService = gitHubService;
             _osvService = osvService;
             _aiExplanationService = aiExplanationService;
             _codePatternScanner = codePatternScanner;
             _configuration = configuration;
+            _context = context;
+            _userManager = userManager;
         }
 
         private class AiTaskWrapper
@@ -44,8 +53,13 @@ namespace CodeShield.Controllers
 
         [HttpGet]
         [Route("Scan")]
-        public IActionResult Index()
+        public async Task<IActionResult> Index(string? repositoryUrl = null)
         {
+            if (!string.IsNullOrWhiteSpace(repositoryUrl))
+            {
+                var model = new ScanViewModel { RepositoryUrl = repositoryUrl };
+                return await Index(model);
+            }
             return View(new ScanViewModel());
         }
 
@@ -215,11 +229,168 @@ namespace CodeShield.Controllers
 
                 swAi.Stop();
                 Console.WriteLine($"[TIMING] Phase 5: Combined AI explanations took {swAi.ElapsedMilliseconds} ms for {aiTasks.Count} tasks.");
+
+                // Save scan results to the database since the scan completed successfully
+                var userId = _userManager.GetUserId(User);
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    var vulnList = packages?.Where(p => p.Ecosystem != Ecosystem.Python)
+                                           .SelectMany(p => p.Vulnerabilities)
+                                           .ToList() ?? new List<VulnerabilityDetail>();
+                    var codeIssueList = model.CodeIssues ?? new List<CodeIssue>();
+
+                    int criticalCount = vulnList.Count(v => v.Severity == Severity.Critical) + codeIssueList.Count(c => c.Severity == Severity.Critical);
+                    int highCount = vulnList.Count(v => v.Severity == Severity.High) + codeIssueList.Count(c => c.Severity == Severity.High);
+                    int mediumCount = vulnList.Count(v => v.Severity == Severity.Medium) + codeIssueList.Count(c => c.Severity == Severity.Medium);
+                    int lowCount = vulnList.Count(v => v.Severity == Severity.Low) + codeIssueList.Count(c => c.Severity == Severity.Low);
+
+                    string grade = ComputeSecurityGrade(criticalCount, highCount, mediumCount, lowCount);
+                    string ecosystemsDetected = model.DetectedEcosystems != null ? string.Join(", ", model.DetectedEcosystems) : "";
+                    var status = string.IsNullOrEmpty(model.OsvWarningMessage) ? ScanStatus.Completed : ScanStatus.PartialFailure;
+                    int totalIssuesFound = vulnList.Count + codeIssueList.Count;
+
+                    var scanResult = new ScanResult
+                    {
+                        UserId = userId,
+                        RepositoryUrl = model.RepositoryUrl,
+                        RepositoryName = ExtractRepositoryName(model.RepositoryUrl),
+                        EcosystemsDetected = ecosystemsDetected,
+                        SecurityGrade = grade,
+                        TotalIssuesFound = totalIssuesFound,
+                        ScannedAt = DateTime.UtcNow,
+                        Status = status
+                    };
+
+                    if (packages != null)
+                    {
+                        foreach (var pkg in packages)
+                        {
+                            if (pkg.Vulnerabilities != null && pkg.Vulnerabilities.Count > 0)
+                            {
+                                foreach (var vuln in pkg.Vulnerabilities)
+                                {
+                                    scanResult.VulnerablePackages.Add(new VulnerablePackage
+                                    {
+                                        PackageName = pkg.PackageName,
+                                        Ecosystem = pkg.Ecosystem,
+                                        InstalledVersion = pkg.Version,
+                                        SafeVersion = null,
+                                        Severity = vuln.Severity,
+                                        Description = vuln.Description,
+                                        AiExplanation = vuln.AiExplanation,
+                                        AiFixSuggestion = vuln.AiFixSuggestion
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    if (model.CodeIssues != null)
+                    {
+                        foreach (var issue in model.CodeIssues)
+                        {
+                            scanResult.CodeIssues.Add(new CodeIssue
+                            {
+                                FileName = issue.FileName,
+                                LineNumber = issue.LineNumber,
+                                IssueType = issue.IssueType,
+                                CodeSnippet = issue.CodeSnippet,
+                                Severity = issue.Severity,
+                                AiExplanation = issue.AiExplanation,
+                                AiFixSuggestion = issue.AiFixSuggestion
+                            });
+                        }
+                    }
+
+                    _context.ScanResults.Add(scanResult);
+                    await _context.SaveChangesAsync();
+                }
             }
 
             swTotal.Stop();
             Console.WriteLine($"[TIMING] Phase 7: Total action execution took {swTotal.ElapsedMilliseconds} ms.");
             return View(model);
+        }
+
+        private string ExtractRepositoryName(string url)
+        {
+            try
+            {
+                var regex = new System.Text.RegularExpressions.Regex(@"^https?://(www\.)?github\.com/(?<owner>[^/]+)/(?<repo>[^/]+?)(?:\.git)?/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                var match = regex.Match(url.Trim());
+                if (match.Success)
+                {
+                    return match.Groups["repo"].Value;
+                }
+            }
+            catch { }
+            return "Unknown Repository";
+        }
+
+        private string ComputeSecurityGrade(int criticalCount, int highCount, int mediumCount, int lowCount)
+        {
+            if (criticalCount + highCount + mediumCount + lowCount == 0)
+            {
+                return "A";
+            }
+            if (criticalCount >= 3)
+            {
+                return "F";
+            }
+            if (criticalCount > 0 || highCount >= 3)
+            {
+                return "D";
+            }
+            if (highCount > 0 || (mediumCount + lowCount) >= 5)
+            {
+                return "C";
+            }
+            if (mediumCount > 0 || lowCount >= 5)
+            {
+                return "B";
+            }
+            return "A";
+        }
+
+        [HttpGet]
+        [Route("Scans")]
+        public async Task<IActionResult> History()
+        {
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Challenge();
+            }
+
+            var scans = await _context.ScanResults
+                .Where(s => s.UserId == userId)
+                .OrderByDescending(s => s.ScannedAt)
+                .ToListAsync();
+
+            return View("History", scans);
+        }
+
+        [HttpGet]
+        [Route("Scans/{id:int}")]
+        public async Task<IActionResult> Details(int id)
+        {
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Challenge();
+            }
+
+            var scan = await _context.ScanResults
+                .Include(s => s.VulnerablePackages)
+                .Include(s => s.CodeIssues)
+                .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId);
+
+            if (scan == null)
+            {
+                return NotFound();
+            }
+
+            return View("Details", scan);
         }
     }
 }
