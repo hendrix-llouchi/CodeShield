@@ -74,6 +74,18 @@ Per identified project risk: writing Regex to reliably catch security issues (e.
 - Write a clear PR description summarizing what changed and why, before merging.
 - Keep commits scoped to one logical change at a time rather than one giant commit per feature.
 
+### PR-First Rule — MANDATORY
+
+**Never merge a feature branch into `main` directly. Never run `git merge` or `git push origin main` for feature work.**
+
+The correct end-of-feature workflow is always:
+1. Commit all changes on the feature branch (e.g. `feature/my-feature`).
+2. Push **only the feature branch** to origin: `git push origin feature/my-feature`
+3. Stop there. Tell the human collaborator that the branch is pushed and ready for a Pull Request on GitHub.
+4. The human collaborator reviews and merges the PR through the GitHub web interface.
+
+If the human collaborator says words like "push to main", "merge it", or "deploy" — interpret this as a request to push the feature branch and open a PR, **not** to merge directly into `main`. Confirm with them before doing any direct merge to `main`.
+
 ## When Uncertain
 
 If a request from the human collaborator seems to conflict with anything in this file, point out the conflict and ask for clarification rather than guessing or silently picking a side. This file reflects deliberate planning decisions (see the project's Software Requirements Specification) — treat it as the source of truth over general best-practice assumptions.
