@@ -70,4 +70,34 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
+// Seed default user
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
+        var defaultEmail = "admin@codeshield.com";
+        var defaultUser = userManager.FindByEmailAsync(defaultEmail).Result;
+        if (defaultUser == null)
+        {
+            var user = new IdentityUser { UserName = defaultEmail, Email = defaultEmail, EmailConfirmed = true };
+            var result = userManager.CreateAsync(user, "Admin123!").Result;
+            if (result.Succeeded)
+            {
+                Console.WriteLine("Successfully seeded default user: admin@codeshield.com / Admin123!");
+            }
+            else
+            {
+                Console.WriteLine("Error seeding user: " + string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("An error occurred while seeding the database: " + ex.Message);
+    }
+}
+
 app.Run();
+

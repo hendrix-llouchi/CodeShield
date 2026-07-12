@@ -177,7 +177,7 @@ CodeShield is deliberately scoped. The following are **not** supported and will 
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd "c# project/CodeShield/CodeShield"
+cd CodeShield/CodeShield/CodeShield
 ```
 
 ### 2. Configure User Secrets
@@ -196,7 +196,7 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" \
 dotnet user-secrets set "GitHub:Token" "your_github_pat_here"
 
 # AgentRouter AI API Key
-dotnet user-secrets set "AiService:ApiKey" "your_agentrouter_api_key_here"
+dotnet user-secrets set "AgentRouter:ApiKey" "your_agentrouter_api_key_here"
 ```
 
 > [!IMPORTANT]
@@ -217,9 +217,9 @@ The app will be available at `https://localhost:7147` or `http://localhost:5213`
 ---
 
 ## 🧪 Running Tests
-```bash
-dotnet test
-```
+
+> [!NOTE]
+> Unit tests are not yet implemented in the initial release. A test project is planned for future iterations.
 
 ---
 
