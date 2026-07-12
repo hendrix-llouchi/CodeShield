@@ -70,12 +70,16 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
-// Seed default user
+// Seed default user and run migrations
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
+        // Migrate database
+        var dbContext = services.GetRequiredService<ApplicationDbContext>();
+        dbContext.Database.Migrate();
+
         var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
         var defaultEmail = "admin@codeshield.com";
         var defaultUser = userManager.FindByEmailAsync(defaultEmail).Result;
@@ -100,4 +104,5 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
 
