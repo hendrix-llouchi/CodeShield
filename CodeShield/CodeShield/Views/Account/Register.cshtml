@@ -29,14 +29,38 @@
 
                     <div class="mb-3">
                         <label asp-for="Password" class="form-label fw-semibold text-secondary small"></label>
-                        <input asp-for="Password" type="password" class="form-control cs-input" placeholder="••••••••" aria-required="true" />
+                        <div class="cs-input-group">
+                            <input asp-for="Password" type="password" id="passwordInput" class="form-control cs-input" placeholder="••••••••" aria-required="true" />
+                            <button type="button" class="password-toggle" id="togglePasswordBtn" aria-label="Toggle password visibility">
+                                <span id="togglePasswordIcon">👁️</span>
+                            </button>
+                        </div>
                         <span asp-validation-for="Password" class="text-danger small mt-1 d-block"></span>
+                        
+                        <div class="password-requirements" id="passwordChecklist">
+                            <div class="requirement-item" id="reqLength">
+                                <span class="req-icon" id="reqLengthIcon">✕</span>
+                                <span>At least 8 characters</span>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mb-4">
                         <label asp-for="ConfirmPassword" class="form-label fw-semibold text-secondary small"></label>
-                        <input asp-for="ConfirmPassword" type="password" class="form-control cs-input" placeholder="••••••••" aria-required="true" />
+                        <div class="cs-input-group">
+                            <input asp-for="ConfirmPassword" type="password" id="confirmPasswordInput" class="form-control cs-input" placeholder="••••••••" aria-required="true" />
+                            <button type="button" class="password-toggle" id="toggleConfirmPasswordBtn" aria-label="Toggle password visibility">
+                                <span id="toggleConfirmPasswordIcon">👁️</span>
+                            </button>
+                        </div>
                         <span asp-validation-for="ConfirmPassword" class="text-danger small mt-1 d-block"></span>
+                        
+                        <div class="password-requirements d-none" id="confirmPasswordChecklist">
+                            <div class="requirement-item" id="reqMatch">
+                                <span class="req-icon" id="reqMatchIcon">✕</span>
+                                <span>Passwords match</span>
+                            </div>
+                        </div>
                     </div>
 
                     <button class="w-100 cs-btn cs-btn-primary mb-3 text-white" type="submit">Create Account</button>
@@ -54,4 +78,78 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        $(document).ready(function () {
+            // Toggle password visibility
+            $('#togglePasswordBtn').click(function () {
+                const passwordInput = $('#passwordInput');
+                const icon = $('#togglePasswordIcon');
+                if (passwordInput.attr('type') === 'password') {
+                    passwordInput.attr('type', 'text');
+                    icon.text('🙈');
+                } else {
+                    passwordInput.attr('type', 'password');
+                    icon.text('👁️');
+                }
+            });
+
+            $('#toggleConfirmPasswordBtn').click(function () {
+                const confirmInput = $('#confirmPasswordInput');
+                const icon = $('#toggleConfirmPasswordIcon');
+                if (confirmInput.attr('type') === 'password') {
+                    confirmInput.attr('type', 'text');
+                    icon.text('🙈');
+                } else {
+                    confirmInput.attr('type', 'password');
+                    icon.text('👁️');
+                }
+            });
+
+            // Real-time password length validation
+            const passwordInput = $('#passwordInput');
+            const reqLength = $('#reqLength');
+            const reqLengthIcon = $('#reqLengthIcon');
+
+            passwordInput.on('input', function () {
+                const val = $(this).val();
+                if (val.length >= 8) {
+                    reqLength.addClass('valid');
+                    reqLengthIcon.text('✓');
+                } else {
+                    reqLength.removeClass('valid');
+                    reqLengthIcon.text('✕');
+                }
+                checkPasswordsMatch();
+            });
+
+            // Real-time matching validation
+            const confirmInput = $('#confirmPasswordInput');
+            const confirmChecklist = $('#confirmPasswordChecklist');
+            const reqMatch = $('#reqMatch');
+            const reqMatchIcon = $('#reqMatchIcon');
+
+            confirmInput.on('input', function () {
+                if ($(this).val().length > 0) {
+                    confirmChecklist.removeClass('d-none');
+                } else {
+                    confirmChecklist.addClass('d-none');
+                }
+                checkPasswordsMatch();
+            });
+
+            function checkPasswordsMatch() {
+                const pass = passwordInput.val();
+                const confirmPass = confirmInput.val();
+                if (confirmPass.length > 0) {
+                    if (pass === confirmPass) {
+                        reqMatch.addClass('valid');
+                        reqMatchIcon.text('✓');
+                    } else {
+                        reqMatch.removeClass('valid');
+                        reqMatchIcon.text('✕');
+                    }
+                }
+            }
+        });
+    </script>
 }
