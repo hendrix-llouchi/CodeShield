@@ -85,6 +85,23 @@ namespace CodeShield.Controllers
             ViewData["ReturnUrl"] = returnUrl;
             if (ModelState.IsValid)
             {
+                // Enforce strict username casing (Option 1)
+                var user = await _userManager.FindByNameAsync(model.Username);
+                if (user != null && user.UserName != model.Username)
+                {
+                    // Increment failed count to honor lockout policies
+                    await _userManager.AccessFailedAsync(user);
+                    if (await _userManager.IsLockedOutAsync(user))
+                    {
+                        ModelState.AddModelError(string.Empty, "Too many failed attempts. Try again in 5 minutes.");
+                    }
+                    else
+                    {
+                        ModelState.AddModelError(string.Empty, "Invalid username or password.");
+                    }
+                    return View(model);
+                }
+
                 // Attempt to sign in
                 var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberMe, lockoutOnFailure: true);
 

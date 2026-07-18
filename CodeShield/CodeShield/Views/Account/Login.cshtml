@@ -28,8 +28,16 @@
                     </div>
 
                     <div class="mb-3">
-                        <label asp-for="Password" class="form-label fw-semibold text-secondary small"></label>
-                        <input asp-for="Password" type="password" class="form-control cs-input" placeholder="••••••••" aria-required="true" />
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label asp-for="Password" class="form-label fw-semibold text-secondary small mb-0"></label>
+                            <a href="#" class="text-decoration-none small text-primary fw-medium" data-bs-toggle="modal" data-bs-target="#forgotPasswordModal">Forgot password?</a>
+                        </div>
+                        <div class="cs-input-group">
+                            <input asp-for="Password" type="password" id="passwordInput" class="form-control cs-input" placeholder="••••••••" aria-required="true" />
+                            <button type="button" class="password-toggle" id="togglePasswordBtn" aria-label="Toggle password visibility">
+                                <span id="togglePasswordIcon">👁️</span>
+                            </button>
+                        </div>
                         <span asp-validation-for="Password" class="text-danger small mt-1 d-block"></span>
                     </div>
 
@@ -53,6 +61,55 @@
     </div>
 </div>
 
+<!-- Forgot Password Info Modal -->
+<div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-labelledby="forgotPasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content cs-modal-content">
+            <div class="modal-header cs-modal-header d-flex align-items-center justify-content-between">
+                <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="forgotPasswordModalLabel">
+                    <span>🔑</span> Password Recovery
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body cs-modal-body text-secondary">
+                <div class="text-center mb-4">
+                    <span class="fs-1">🌐</span>
+                    <h6 class="fw-bold mt-2 text-dark">Local Sandbox Environment</h6>
+                </div>
+                <p class="small">
+                    This instance of <strong>CodeShield</strong> is running as a local security tool with no connection to external SMTP/Gmail or SMS services.
+                </p>
+                <p class="small mb-0">
+                    If you've forgotten your password, you can:
+                </p>
+                <ul class="small mt-2 ps-3">
+                    <li class="mb-1"><strong>Register a new username</strong> to continue scanning public repositories.</li>
+                    <li>Contact your local system administrator to reset or re-seed the credentials from the database.</li>
+                </ul>
+            </div>
+            <div class="modal-footer cs-modal-footer">
+                <button type="button" class="btn btn-secondary cs-btn w-100" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        $(document).ready(function () {
+            $('#togglePasswordBtn').click(function () {
+                const passwordInput = $('#passwordInput');
+                const icon = $('#togglePasswordIcon');
+                
+                if (passwordInput.attr('type') === 'password') {
+                    passwordInput.attr('type', 'text');
+                    icon.text('🙈');
+                } else {
+                    passwordInput.attr('type', 'password');
+                    icon.text('👁️');
+                }
+            });
+        });
+    </script>
 }
