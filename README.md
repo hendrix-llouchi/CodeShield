@@ -1,18 +1,19 @@
-# 🛡️  Valkyire
+# 🛡️ CodeShield (Valkyire)
 
 > A modular, web-based security scanner that analyzes **public GitHub repositories** for vulnerable packages and insecure code patterns — with plain-English AI explanations and fix suggestions.
 
-Built with **ASP.NET Core (.NET 10)**, Razor Views, and Entity Framework Core.
+Built with **ASP.NET Core (.NET 10)**, Razor Views, Entity Framework Core, and a custom **Neo-Brutalist Design System**.
 
 ---
 
 ## 🚀 Key Features
 
-### 🔍 Repository Intake
+### 🔍 Repository Intake & Monorepo Support
 - Validates public GitHub repository URLs before any scanning begins.
 - Queries the **GitHub REST API** to recursively fetch the repository's file tree.
 - Enforces a **1,000-file threshold** to avoid scanning extremely large repositories.
 - Detects supported ecosystems (`package.json`, `.csproj`, `requirements.txt`) and fails fast with a clear message if none are found.
+- Supports **Monorepos**: Scans all supported ecosystems found in a repository and groups findings cleanly by ecosystem in the UI.
 
 ### 📦 Dependency Vulnerability Scanning
 - Full support for **npm** (`package.json`) and **NuGet** (`.csproj`) dependency parsing.
@@ -39,11 +40,15 @@ Built with **ASP.NET Core (.NET 10)**, Razor Views, and Entity Framework Core.
 - Returns a plain-English explanation of the risk and a concrete fix suggestion.
 - If the AI call times out or fails for some issues, the scan still completes — those items are shown without AI annotations rather than failing the entire scan.
 
+### 🎨 Neo-Brutalist User Interface
+- Modern high-contrast **Neo-Brutalist** design language ("The Developer Foundry" theme).
+- Distinct color-coded accents for ecosystems, severity badges, and interaction cards with zero-blur hard offset shadows.
+
 ### 👤 User Accounts & Dashboard
 - Registration and login powered by **ASP.NET Core Identity**.
-- Accounts are **locked for 5 minutes** after 5 consecutive failed login attempts. Login errors use a generic message to avoid revealing whether an email address is registered.
+- Automatic seeding of a default developer account (`admin` / `Admin123!`) on startup.
+- Accounts are **locked for 5 minutes** after 5 consecutive failed login attempts. Login errors use a generic message to avoid revealing user existence.
 - Dashboard displays full scan history with security grades, ecosystem breakdowns, and issue counts.
-- Detailed per-scan results page groups findings by ecosystem (for monorepos) and by issue type.
 
 ### 🏆 Security Grading
 - Each completed scan receives an overall **security grade** (A–F) based on the number and severity of issues found.
@@ -56,7 +61,7 @@ Built with **ASP.NET Core (.NET 10)**, Razor Views, and Entity Framework Core.
 | Layer | Technology |
 |---|---|
 | **Framework** | ASP.NET Core (.NET 10) |
-| **Frontend** | Razor Views + Bootstrap 5 |
+| **Frontend** | Razor Views + Bootstrap 5 + Neo-Brutalist CSS |
 | **Database** | SQL Server LocalDB (dev) / SQL Server (prod) |
 | **ORM** | Entity Framework Core 10 (Code-First) |
 | **Auth** | ASP.NET Core Identity (cookie-based sessions) |
@@ -85,22 +90,25 @@ CodeShield/
     │   ├── HomeController.cs         # Landing page
     │   └── ScanController.cs         # Scan orchestration & results
     ├── Services/
-    │   ├── GitHubService.cs          # GitHub REST API integration
-    │   ├── OsvService.cs             # OSV.dev vulnerability lookup
-    │   ├── CodePatternScanner.cs     # Regex-based code scanning
-    │   └── AiExplanationService.cs   # AgentRouter AI explanations
+    │   ├── GitHubService.cs          # GitHub REST API integration (IGitHubService)
+    │   ├── OsvService.cs             # OSV.dev vulnerability lookup (IOsvService)
+    │   ├── CodePatternScanner.cs     # Regex-based code scanning (ICodePatternScanner)
+    │   └── AiExplanationService.cs   # AgentRouter AI explanations (IAiExplanationService)
     ├── Models/
-    │   ├── ScanResult.cs             # Core scan entity
-    │   ├── VulnerablePackage.cs      # Package vulnerability entity
-    │   └── CodeIssue.cs              # Code pattern issue entity
+    │   ├── ScanResult.cs             # Core scan result entity
+    │   ├── VulnerablePackage.cs      # Vulnerable package entity
+    │   ├── CodeIssue.cs              # Code pattern issue entity
+    │   ├── DependencyPackage.cs      # Parsed dependency DTO
+    │   ├── VulnerabilityDetail.cs    # OSV response detail DTO
+    │   └── ViewModels...             # Scan, Login, Register, Error view models
     ├── Views/
     │   ├── Account/                  # Login & Register pages
-    │   ├── Dashboard/                # Scan history
+    │   ├── Dashboard/                # Scan history view
     │   ├── Home/                     # Landing page
-    │   └── Scan/                     # Scan form & results
+    │   └── Scan/                     # Scan form & detailed results
     ├── Data/
-    │   └── ApplicationDbContext.cs   # EF Core DbContext
-    └── Migrations/                   # EF Core migration history
+    │   └── ApplicationDbContext.cs   # EF Core DbContext & ASP.NET Identity tables
+    └── Migrations/                   # EF Core database migrations
 ```
 
 ---
@@ -177,7 +185,7 @@ CodeShield is deliberately scoped. The following are **not** supported and will 
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd CodeShield/CodeShield/CodeShield
+cd CodeShield/CodeShield
 ```
 
 ### 2. Configure User Secrets
@@ -212,7 +220,12 @@ dotnet ef database update
 dotnet run
 ```
 
-The app will be available at `https://localhost:7147` or `http://localhost:5213` — check the terminal output for the exact ports.
+The app will be available at `https://localhost:7147` or `http://localhost:5213`.
+
+> [!TIP]
+> **Default Account Credentials**: On startup, the application seeds a default account:
+> - **Username**: `admin`
+> - **Password**: `Admin123!`
 
 ---
 
